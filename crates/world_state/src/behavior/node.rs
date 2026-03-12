@@ -3,11 +3,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use color_eyre::Result;
 use hsl_network_messages::{SubState, Team};
 use linear_algebra::{Point2, point};
+use projection::camera_matrix::CameraMatrix;
 use serde::{Deserialize, Serialize};
 
 use context_attribute::context;
 use coordinate_systems::{Field, Ground};
-use framework::{AdditionalOutput, MainOutput};
+use framework::{AdditionalOutput, MainOutput, PerceptionInput};
 use types::{
     action::Action,
     ball_position::BallPosition,
@@ -17,6 +18,7 @@ use types::{
     filtered_game_state::FilteredGameState,
     kick_decision::DecisionParameters,
     motion_command::MotionCommand,
+    object_detection::{Detection, NaoLabelPartyObjectDetectionLabel},
     parameters::{BehaviorParameters, WalkSpeedParameters},
     path_obstacles::PathObstacle,
     primary_state::PrimaryState,
@@ -55,6 +57,7 @@ pub struct CycleContext {
     ball_position: Input<Option<BallPosition<Ground>>, "ball_position?">,
     cycle_time: Input<CycleTime, "cycle_time">,
     world_state: Input<WorldState, "world_state">,
+    camera_matrix: Input<Option<CameraMatrix>, "camera_matrix?">,
 
     field_dimensions: Parameter<FieldDimensions, "field_dimensions">,
     kick_decision_parameters: Parameter<DecisionParameters, "kick_selector">,
@@ -65,6 +68,11 @@ pub struct CycleContext {
     active_action: AdditionalOutput<Action, "active_action">,
 
     last_motion_command: CyclerState<MotionCommand, "last_motion_command">,
+    detected_objects: PerceptionInput<
+        Vec<Detection<NaoLabelPartyObjectDetectionLabel>>,
+        "ObjectDetection",
+        "detected_objects",
+    >,
 }
 
 #[context]
@@ -203,6 +211,14 @@ impl Behavior {
             &look_action,
             &mut self.last_defender_mode,
         );
+        let last_detected_objects = context
+            .detected_objects
+            .persistent
+            .iter()
+            .chain(context.detected_objects.temporary.iter())
+            .flat_map(|(_timestamp, detections)| detections.iter().cloned().cloned())
+            .next_back()
+            .unwrap_or_default();
         let (action, motion_command) = actions
             .iter()
             .find_map(|action| {
@@ -287,6 +303,8 @@ impl Behavior {
                         *context.field_dimensions,
                         &mut context.path_obstacles_output,
                         &mut self.last_close_enough_to_kick,
+                        &last_detected_objects,
+                        context.camera_matrix?.clone(),
                     ),
                     Action::Search => search::execute(
                         world_state,
