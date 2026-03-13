@@ -2,7 +2,10 @@ use booster::Kick;
 use booster_sdk::types::RobotMode;
 use color_eyre::Result;
 use context_attribute::context;
+use coordinate_systems::Ground;
+use framework::AdditionalOutput;
 use hardware::{HighLevelInterface, MotionRuntimeInteface, VisualKickInterface};
+use linear_algebra::Point2;
 use ros2::std_msgs::header::Header;
 use serde::{Deserialize, Serialize};
 use types::{cycle_time::CycleTime, motion_command::MotionCommand, motion_runtime::MotionRuntime};
@@ -17,6 +20,8 @@ pub struct CreationContext {}
 
 #[context]
 pub struct CycleContext {
+    target_position: AdditionalOutput<Point2<Ground>, "kick.target_position">,
+
     robot_mode: RequiredInput<Option<RobotMode>, "WorldState", "robot_mode?">,
 
     motion_command: Input<MotionCommand, "WorldState", "motion_command">,
@@ -38,7 +43,7 @@ impl BoosterKick {
 
     pub fn cycle(
         &mut self,
-        context: CycleContext<
+        mut context: CycleContext<
             impl HighLevelInterface + MotionRuntimeInteface + VisualKickInterface,
         >,
     ) -> Result<MainOutputs> {
@@ -65,6 +70,10 @@ impl BoosterKick {
                 ) {
                     set_visual_kick_activation_state(&context, true);
                 }
+
+                context
+                    .target_position
+                    .fill_if_subscribed(|| *target_position);
 
                 let kick = Kick {
                     header: Header {
