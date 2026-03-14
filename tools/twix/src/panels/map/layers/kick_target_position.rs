@@ -37,7 +37,6 @@ impl Layer<Ground> for KickTargetPosition {
             };
             let radius = 0.1;
             painter.circle(target_position, radius, color, stroke);
-            println!("kick target position {:?}", target_position);
         } else {
             let color = Color32::RED;
             let stroke = Stroke {
